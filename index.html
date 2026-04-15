@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mario vs Luigi: Food Word Challenge</title>
+    <style>
+        :root {
+            --mario-red: #e52521;
+            --luigi-green: #43b047;
+            --sky-blue: #5c94fc;
+            --brick-brown: #ab4700;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-drag: none;
+            touch-action: none; /* Prevents browser scrolling while dragging */
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: 'Arial Black', Gadget, sans-serif;
+            background-color: var(--sky-blue);
+            overflow: hidden;
+        }
+
+        /* Background Elements */
+        .game-world {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            background-image: url('images/background.png');
+            background-size: cover;
+            background-position: bottom;
+            position: relative;
+        }
+
+        .ground {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 60px;
+            background-image: url('images/brick.png');
+            background-repeat: repeat-x;
+            background-size: 60px;
+        }
+
+        /* Split Screen Layout */
+        .side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding-top: 40px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .mario-side { border-right: 4px dashed rgba(255,255,255,0.5); }
+
+        /* UI Elements */
+        .character-img {
+            height: 150px;
+            margin-bottom: 20px;
+            filter: drop-shadow(5px 5px 0px rgba(0,0,0,0.2));
+        }
+
+        .word-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 40px;
+            min-height: 100px;
+        }
+
+        .letter-slot {
+            width: 80px;
+            height: 100px;
+            background: rgba(255, 255, 255, 0.3);
+            border: 4px solid white;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 50px;
+            color: white;
+            box-shadow: inset 4px 4px 10px rgba(0,0,0,0.2);
+        }
+
+        .letter-slot.highlight {
+            background: rgba(255, 255, 255, 0.6);
+            transform: scale(1.05);
+        }
+
+        /* Draggable Tiles */
+        .bank {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            max-width: 80%;
+            margin-top: 50px;
+        }
+
+        .tile {
+            width: 80px;
+            height: 80px;
+            background: #f8d870; /* Mario Yellow */
+            border: 4px solid #000;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 45px;
+            font-weight: bold;
+            cursor: grab;
+            position: relative;
+            box-shadow: 0 6px 0 #b89830;
+            transition: transform 0.1s;
+            touch-action: none;
+        }
+
+        .mario-tile { background: var(--mario-red); color: white; box-shadow: 0 6px 0 #801010;}
+        .luigi-tile { background: var(--luigi-green); color: white; box-shadow: 0 6px 0 #206020;}
+
+        /* Buttons */
+        .btn {
+            padding: 15px 30px;
+            font-size: 24px;
+            border: none;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 5px 0 rgba(0,0,0,0.3);
+            margin-top: 20px;
+        }
+
+        .mario-btn { background: var(--mario-red); }
+        .luigi-btn { background: var(--luigi-green); }
+        .btn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,0.3); }
+
+        /* Animations */
+        @keyframes pop {
+            0% { transform: scale(0); }
+            80% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .pop-in { animation: pop 0.4s ease forwards; }
+
+        .success-msg {
+            color: white;
+            font-size: 40px;
+            text-shadow: 3px 3px 0 #000;
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-world">
+    <div class="side mario-side" id="mario-board">
+        <img src="images/mario.png" alt="Mario" class="character-img">
+        <div class="word-container" id="mario-word-slots"></div>
+        <div class="success-msg" id="mario-success">CORRECT! ✨</div>
+        <div class="bank" id="mario-bank"></div>
+        <button class="btn mario-btn" onclick="initGame('mario')">New Word</button>
+    </div>
+
+    <div class="side luigi-side" id="luigi-board">
+        <img src="images/luigi.png" alt="Luigi" class="character-img">
+        <div class="word-container" id="luigi-word-slots"></div>
+        <div class="success-msg" id="luigi-success">EXCELLENT! ✨</div>
+        <div class="bank" id="luigi-bank"></div>
+        <button class="btn luigi-btn" onclick="initGame('luigi')">New Word</button>
+    </div>
+
+    <div class="ground"></div>
+</div>
+
+<script>
+    const wordList = ["PIZZA", "BURGER", "APPLE", "PASTA", "SUSHI", "CAKE", "BREAD", "JUICE"];
+    let gameState = {
+        mario: { currentWord: "", solved: [] },
+        luigi: { currentWord: "", solved: [] }
+    };
+
+    function initGame(side) {
+        const board = document.getElementById(`${side}-bank`);
+        const slotContainer = document.getElementById(`${side}-word-slots`);
+        const successMsg = document.getElementById(`${side}-success`);
+        
+        // Reset state
+        successMsg.style.display = 'none';
+        board.innerHTML = '';
+        slotContainer.innerHTML = '';
+        
+        // Pick random word
+        const word = wordList[Math.floor(Math.random() * wordList.length)];
+        gameState[side].currentWord = word;
+        gameState[side].solved = new Array(word.length).fill(null);
+
+        // Create empty slots
+        for (let i = 0; i < word.length; i++) {
+            const slot = document.createElement('div');
+            slot.className = 'letter-slot';
+            slot.dataset.index = i;
+            slotContainer.appendChild(slot);
+        }
+
+        // Create scrambled tiles
+        const scrambled = word.split('').sort(() => Math.random() - 0.5);
+        scrambled.forEach(char => {
+            const tile = document.createElement('div');
+            tile.className = `tile ${side}-tile pop-in`;
+            tile.textContent = char;
+            tile.style.position = 'relative';
+            
+            // Interaction logic
+            setupDraggable(tile, side);
+            board.appendChild(tile);
+        });
+    }
+
+    function setupDraggable(tile, side) {
+        let offsetX, offsetY;
+        let startX, startY;
+        
+        tile.onpointerdown = function(e) {
+            tile.setPointerCapture(e.pointerId);
+            const rect = tile.getBoundingClientRect();
+            startX = rect.left;
+            startY = rect.top;
+            
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+            
+            tile.style.position = 'fixed';
+            tile.style.zIndex = 1000;
+            moveAt(e.clientX, e.clientY);
+        };
+
+        tile.onpointermove = function(e) {
+            if (!tile.hasPointerCapture(e.pointerId)) return;
+            moveAt(e.clientX, e.clientY);
+            checkHover(e.clientX, e.clientY, side);
+        };
+
+        tile.onpointerup = function(e) {
+            tile.releasePointerCapture(e.pointerId);
+            const dropZone = findDropZone(e.clientX, e.clientY, side);
+            
+            if (dropZone && !dropZone.textContent && tile.textContent === gameState[side].currentWord[dropZone.dataset.index]) {
+                // Correct drop
+                dropZone.textContent = tile.textContent;
+                dropZone.classList.remove('highlight');
+                tile.remove();
+                checkWin(side);
+            } else {
+                // Return to bank
+                tile.style.position = 'relative';
+                tile.style.left = '0px';
+                tile.style.top = '0px';
+                tile.style.zIndex = 1;
+            }
+        };
+
+        function moveAt(pageX, pageY) {
+            tile.style.left = pageX - offsetX + 'px';
+            tile.style.top = pageY - offsetY + 'px';
+        }
+    }
+
+    function checkHover(x, y, side) {
+        const slots = document.querySelectorAll(`#${side}-word-slots .letter-slot`);
+        slots.forEach(slot => {
+            const rect = slot.getBoundingClientRect();
+            if (x > rect.left && x < rect.right && y > rect.top && y < rect.bottom) {
+                slot.classList.add('highlight');
+            } else {
+                slot.classList.remove('highlight');
+            }
+        });
+    }
+
+    function findDropZone(x, y, side) {
+        const slots = document.querySelectorAll(`#${side}-word-slots .letter-slot`);
+        for (let slot of slots) {
+            const rect = slot.getBoundingClientRect();
+            if (x > rect.left && x < rect.right && y > rect.top && y < rect.bottom) {
+                return slot;
+            }
+        }
+        return null;
+    }
+
+    function checkWin(side) {
+        const slots = document.querySelectorAll(`#${side}-word-slots .letter-slot`);
+        const isComplete = Array.from(slots).every(s => s.textContent !== "");
+        if (isComplete) {
+            document.getElementById(`${side}-success`).style.display = 'block';
+            // Simple "Correct" Sound Logic (optional placeholder)
+            console.log(`${side} team won!`);
+        }
+    }
+
+    // Initialize both boards on load
+    window.onload = () => {
+        initGame('mario');
+        initGame('luigi');
+    };
+</script>
+
+</body>
+</html>
